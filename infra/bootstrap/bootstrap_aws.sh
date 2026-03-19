@@ -208,6 +208,7 @@ write_role_policy() {
         "apprunner:DeleteService",
         "apprunner:DescribeService",
         "apprunner:ListServices",
+        "apprunner:ListTagsForResource",
         "apprunner:TagResource",
         "apprunner:UntagResource",
         "apprunner:CreateAutoScalingConfiguration",
