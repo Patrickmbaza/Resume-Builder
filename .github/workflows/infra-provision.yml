@@ -1,0 +1,61 @@
+name: Infra Provision
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: infra-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  provision:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE }}
+      TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
+      TF_ENVIRONMENT: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required configuration
+        run: |
+          set -euo pipefail
+          required=(AWS_REGION AWS_ROLE_TO_ASSUME TF_STATE_BUCKET TF_LOCK_TABLE TF_STATE_KEY)
+          for v in "${required[@]}"; do
+            if [ -z "${!v:-}" ]; then
+              echo "Missing repository variable: $v"
+              exit 1
+            fi
+          done
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform fmt check
+        run: terraform -chdir=infra/terraform fmt -check -recursive
+
+      - name: Terraform apply
+        run: bash infra/terraform/scripts/terraform_apply.sh
+
+      - name: Show outputs
+        run: terraform -chdir=infra/terraform output

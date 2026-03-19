@@ -1,73 +1,355 @@
-# React + TypeScript + Vite
+# AuraCV Resume Builder
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A production-ready React + TypeScript resume builder with:
+- Guided 10-step resume editor
+- Live preview with template switching
+- PDF export
+- AI-assisted resume scoring and optimization
+- Dockerized deployment
+- AWS deployment support via ECR + App Runner + Terraform
 
-Currently, two official plugins are available:
+## Table of Contents
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Overview
+- Features
+- Tech Stack
+- Project Structure
+- Local Development
+- Environment Variables
+- Build and Run (Local)
+- Docker (Production Image)
+- AWS Deployment (ECR + App Runner)
+- Terraform Infrastructure
+- GitHub Actions CI/CD
+- Security Notes
+- Troubleshooting
+- Scripts
+- License
 
-## React Compiler
+## Overview
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+AuraCV is a frontend-first resume builder designed for fast iteration and production deployment.
 
-## Expanding the ESLint configuration
+The app includes:
+- A landing page at `/`
+- The editor app at `/app`
+- Persistent local storage of resume data in browser localStorage
+- AI-driven resume analysis in the final step (requires API key at build time)
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Features
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Resume Builder
+- 10-step guided editor:
+  - Personal Info
+  - Summary & Level
+  - Experience
+  - Education
+  - Skills
+  - Projects
+  - Certifications
+  - Additional
+  - Design
+  - AI Optimize
+- Drag-and-drop reordering for Experience and Projects
+- Optional profile photo upload
+- Design customization:
+  - Theme color
+  - Font family
+  - Template selection
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Preview and Export
+- Real-time preview while editing
+- Multiple templates (`classic`, `executive`, `minimal`, `sidebar`, `modern`, `compact`, `elegant`, `bold`, `timeline`, `professional`)
+- PDF export using `html2pdf.js`
+- PNG export fallback flow
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### AI Assistance
+- Resume scoring and feedback (Step 10)
+- Optimized summary suggestions
+- Current implementation uses OpenRouter in `src/services/aiService.ts`
+
+## Tech Stack
+
+- React 19
+- TypeScript
+- Vite 8
+- Tailwind CSS 4
+- Zustand (state + persistence)
+- Framer Motion
+- React Router 7
+- Docker + Nginx
+- AWS ECR + App Runner
+- Terraform
+
+## Project Structure
+
+```text
+.
+├── src/
+│   ├── components/
+│   │   ├── editor/
+│   │   └── preview/
+│   ├── hooks/
+│   ├── pages/
+│   ├── services/
+│   └── types/
+├── public/
+├── infra/
+│   └── terraform/
+│       ├── scripts/
+│       ├── main.tf
+│       ├── variables.tf
+│       ├── outputs.tf
+│       ├── versions.tf
+│       └── README.md
+├── Dockerfile
+├── nginx.conf
+└── package.json
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Local Development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Prerequisites
+- Node.js 22+ (recommended)
+- npm 10+
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Install
+
+```bash
+npm ci
 ```
+
+### Run dev server
+
+```bash
+npm run dev
+```
+
+### Lint
+
+```bash
+npm run lint
+```
+
+## Environment Variables
+
+This is a Vite frontend app. Only `VITE_*` vars are exposed to client code.
+
+Use `.env`:
+
+```dotenv
+VITE_OPENROUTER_API_KEY=your_openrouter_api_key_here
+VITE_OPENAI_API_KEY=your_openai_api_key_here
+```
+
+Notes:
+- `src/services/aiService.ts` currently reads `VITE_OPENROUTER_API_KEY`.
+- `VITE_OPENAI_API_KEY` is available for future integration but not used directly in current service code.
+- Any key embedded in a frontend build should be treated as non-secret from a backend security perspective.
+
+## Build and Run (Local)
+
+### Production build
+
+```bash
+npm run build
+```
+
+### Preview build
+
+```bash
+npm run preview
+```
+
+## Docker (Production Image)
+
+The project includes a multi-stage production Docker image:
+- Builder stage: Node 22 Alpine
+- Runtime stage: Nginx Alpine
+
+SPA routing is handled by `nginx.conf` using fallback to `/index.html`.
+
+### Build image with BuildKit secrets
+
+`Dockerfile` uses secret mounts for build-time Vite keys.
+
+```bash
+export VITE_OPENROUTER_API_KEY='your_openrouter_key'
+export VITE_OPENAI_API_KEY='your_openai_key'
+
+docker build -t resume-builder \
+  --secret id=vite_openrouter_api_key,env=VITE_OPENROUTER_API_KEY \
+  --secret id=vite_openai_api_key,env=VITE_OPENAI_API_KEY \
+  .
+```
+
+If you only have OpenAI key:
+
+```bash
+export VITE_OPENAI_API_KEY='your_openai_key'
+docker build -t resume-builder --secret id=vite_openai_api_key,env=VITE_OPENAI_API_KEY .
+```
+
+### Run container
+
+```bash
+docker run --rm -p 8080:80 resume-builder
+```
+
+App URL:
+- `http://localhost:8080`
+
+## AWS Deployment (ECR + App Runner)
+
+The intended production model is:
+1. GitHub Actions provisions infrastructure with Terraform
+2. GitHub Actions builds and pushes the application image to ECR
+3. GitHub Actions deploys the image to App Runner
+
+Manual AWS CLI and local Terraform commands are now fallback paths, not the primary operating flow.
+
+## Terraform Infrastructure
+
+Terraform code lives in `infra/terraform/`.
+
+It provisions:
+- ECR repository with scan-on-push
+- ECR lifecycle policy
+- IAM role for App Runner ECR access
+- App Runner autoscaling config
+- App Runner service
+
+Tracked production configuration lives in:
+- `infra/terraform/environments/production.tfvars`
+
+Remote Terraform state is expected for CI/CD ownership:
+- S3 bucket for state storage
+- DynamoDB table for state locking
+
+The workflows pass backend config at runtime using repository variables, so the same state is used by:
+- `Infra Provision`
+- `App Deploy`
+- `Infra Destroy`
+
+For full Terraform details, see:
+- `infra/terraform/README.md`
+
+## GitHub Actions CI/CD
+
+Workflow files:
+- `.github/workflows/ci.yml`
+- `.github/workflows/infra-provision.yml`
+- `.github/workflows/app-deploy.yml`
+- `.github/workflows/infra-destroy.yml`
+
+Behavior:
+- On pull requests to `main`:
+  - Install dependencies
+  - Lint
+  - Build
+  - Docker build smoke test (no push)
+- On manual run of `Infra Provision`:
+  - Initialize Terraform against remote S3 backend
+  - Apply `infra/terraform/environments/production.tfvars`
+  - Provision ECR, IAM access role for App Runner, autoscaling, and App Runner service
+- On push to `main` or manual run of `App Deploy`:
+  - Run full app quality gates
+  - Read ECR/App Runner identifiers from Terraform remote state outputs
+  - Build and push image to ECR tagged with immutable SHA (`sha-<12-char-commit>`)
+  - Update App Runner service to the new image URI
+- On manual run of `Infra Destroy`:
+  - Initialize Terraform against the same remote backend
+  - Destroy the full stack with `ecr_force_delete=true`
+
+Required GitHub repository variables (`Settings -> Secrets and variables -> Actions -> Variables`):
+- `AWS_REGION` (example: `us-east-1`)
+- `AWS_ROLE_TO_ASSUME` (OIDC assumable IAM role ARN for GitHub Actions)
+- `TF_STATE_BUCKET` (S3 bucket used for Terraform remote state)
+- `TF_LOCK_TABLE` (DynamoDB table used for Terraform state locking)
+- `TF_STATE_KEY` (example: `resume-builder/production.tfstate`)
+
+Optional GitHub repository secrets:
+- `VITE_OPENAI_API_KEY`
+- `VITE_OPENROUTER_API_KEY`
+
+Notes:
+- The workflow uses GitHub OIDC (`aws-actions/configure-aws-credentials`) instead of long-lived AWS keys.
+- If you do not use one of the Vite keys, leave that secret unset.
+- The IAM role in `AWS_ROLE_TO_ASSUME` must allow at least:
+  - Terraform backend access to the S3 state bucket and DynamoDB lock table
+  - ECR push permissions (`ecr:GetAuthorizationToken`, `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`, `ecr:BatchCheckLayerAvailability`, `ecr:PutImage`)
+  - Terraform-managed infra permissions for ECR, IAM role attachment, App Runner, and autoscaling resources
+  - App Runner deploy permissions (`apprunner:DescribeService`, `apprunner:UpdateService`)
+- One-time bootstrap still exists outside the pipeline:
+  - Create the GitHub OIDC IAM role
+  - Create the S3 backend bucket
+  - Create the DynamoDB lock table
+
+### First-Time Setup
+
+1. Create the GitHub OIDC role in AWS.
+2. Create the Terraform backend resources:
+   - S3 bucket for state
+   - DynamoDB table for locking
+3. Add repository variables:
+   - `AWS_REGION`
+   - `AWS_ROLE_TO_ASSUME`
+   - `TF_STATE_BUCKET`
+   - `TF_LOCK_TABLE`
+   - `TF_STATE_KEY`
+4. Add repository secrets if AI features need them:
+   - `VITE_OPENAI_API_KEY`
+   - `VITE_OPENROUTER_API_KEY`
+5. Run `Infra Provision` from GitHub Actions.
+6. Run `App Deploy` from GitHub Actions, or push to `main`.
+
+### Source of Truth
+
+Production AWS resources should be created, updated, and destroyed through the GitHub Actions workflows above. Local Terraform commands are useful for debugging, but they should not be the routine path once the remote backend and workflows are in place.
+
+## Security Notes
+
+- `VITE_*` values are embedded into frontend assets at build time.
+- Do not treat frontend API keys as server-side secrets.
+- For strict production security, move AI calls to a backend API and keep provider keys server-side.
+
+## Troubleshooting
+
+### Docker multiline command fails with `--secret: command not found`
+Cause: broken line continuation in shell.
+
+Use single line:
+
+```bash
+docker build -t resume-builder --secret id=vite_openai_api_key,env=VITE_OPENAI_API_KEY .
+```
+
+### ECR lifecycle policy apply error
+If you previously saw lifecycle validation issues, ensure latest Terraform in repo is applied.
+
+### Infra destroy fails for ECR not empty
+Use the `Infra Destroy` workflow first. It already passes `ecr_force_delete=true`.
+
+If you are debugging locally and it still fails, manually delete ECR images and retry:
+
+```bash
+aws ecr list-images --repository-name resume-builder --region us-east-1 --query 'imageIds[*]' --output json > /tmp/image_ids.json
+aws ecr batch-delete-image --repository-name resume-builder --region us-east-1 --image-ids "$(cat /tmp/image_ids.json)"
+terraform destroy -var="ecr_force_delete=true"
+```
+
+### Warning: commit information not captured during Docker build
+This warning is non-blocking and does not affect runtime behavior.
+
+## Scripts
+
+- Terraform apply helper used by GitHub Actions:
+  - [terraform_apply.sh](/mnt/c/Users/patri/Desktop/DEVOPS-PROJECTS/Resume-builder/infra/terraform/scripts/terraform_apply.sh)
+- Terraform destroy helper used by GitHub Actions:
+  - [terraform_destroy.sh](/mnt/c/Users/patri/Desktop/DEVOPS-PROJECTS/Resume-builder/infra/terraform/scripts/terraform_destroy.sh)
+- Local ECR image push helper:
+  - [infra/terraform/scripts/push_ecr.sh](/mnt/c/Users/patri/Desktop/DEVOPS-PROJECTS/Resume-builder/infra/terraform/scripts/push_ecr.sh)
+
+## License
+
+No license file is currently included. Add a `LICENSE` file if you plan to distribute this project.

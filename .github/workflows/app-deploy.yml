@@ -1,0 +1,156 @@
+name: App Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: app-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Build and Deploy App
+    runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE }}
+      TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required configuration
+        run: |
+          set -euo pipefail
+          required=(AWS_REGION AWS_ROLE_TO_ASSUME TF_STATE_BUCKET TF_LOCK_TABLE TF_STATE_KEY)
+          for v in "${required[@]}"; do
+            if [ -z "${!v:-}" ]; then
+              echo "Missing repository variable: $v"
+              exit 1
+            fi
+          done
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run build
+        run: npm run build
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Load Terraform outputs
+        id: tf
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra/terraform init \
+            -input=false \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=${TF_STATE_KEY}" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=${TF_LOCK_TABLE}"
+
+          ECR_REPOSITORY_URL="$(terraform -chdir=infra/terraform output -raw ecr_repository_url)"
+          APP_RUNNER_SERVICE_ARN="$(terraform -chdir=infra/terraform output -raw apprunner_service_arn)"
+          if [ -z "${APP_RUNNER_SERVICE_ARN}" ] || [ "${APP_RUNNER_SERVICE_ARN}" = "null" ]; then
+            echo "App Runner service ARN not found in Terraform state. Run Infra Provision first."
+            exit 1
+          fi
+
+          echo "ecr_repository_url=${ECR_REPOSITORY_URL}" >> "$GITHUB_OUTPUT"
+          echo "app_runner_service_arn=${APP_RUNNER_SERVICE_ARN}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Compute image metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::12}"
+          IMAGE_TAG="sha-${SHORT_SHA}"
+          IMAGE_URI="${{ steps.tf.outputs.ecr_repository_url }}:${IMAGE_TAG}"
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image to ECR
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.image_uri }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          secrets: |
+            vite_openai_api_key=${{ secrets.VITE_OPENAI_API_KEY }}
+            vite_openrouter_api_key=${{ secrets.VITE_OPENROUTER_API_KEY }}
+
+      - name: Deploy image to App Runner
+        run: |
+          set -euo pipefail
+
+          CURRENT_SOURCE_CONFIG="$(aws apprunner describe-service \
+            --service-arn "${APP_RUNNER_SERVICE_ARN}" \
+            --query 'Service.SourceConfiguration' \
+            --output json)"
+
+          UPDATED_SOURCE_CONFIG="$(echo "$CURRENT_SOURCE_CONFIG" | jq --arg IMAGE "${IMAGE_URI}" '.ImageRepository.ImageIdentifier = $IMAGE')"
+          printf '%s\n' "$UPDATED_SOURCE_CONFIG" > source-config.json
+
+          aws apprunner update-service \
+            --service-arn "${APP_RUNNER_SERVICE_ARN}" \
+            --source-configuration file://source-config.json >/tmp/apprunner-update.json
+
+          for i in $(seq 1 60); do
+            STATUS="$(aws apprunner describe-service --service-arn "${APP_RUNNER_SERVICE_ARN}" --query 'Service.Status' --output text)"
+            echo "Attempt $i: status=$STATUS"
+            if [ "$STATUS" = "RUNNING" ]; then
+              SERVICE_URL="$(aws apprunner describe-service --service-arn "${APP_RUNNER_SERVICE_ARN}" --query 'Service.ServiceUrl' --output text)"
+              echo "Deployment succeeded: https://${SERVICE_URL}"
+              exit 0
+            fi
+            if [ "$STATUS" = "CREATE_FAILED" ] || [ "$STATUS" = "DELETE_FAILED" ] || [ "$STATUS" = "OPERATION_FAILED" ]; then
+              echo "Deployment failed with status: $STATUS"
+              exit 1
+            fi
+            sleep 10
+          done
+
+          echo "Timed out waiting for App Runner deployment."
+          exit 1
+        env:
+          APP_RUNNER_SERVICE_ARN: ${{ steps.tf.outputs.app_runner_service_arn }}
+          IMAGE_URI: ${{ steps.meta.outputs.image_uri }}
