@@ -44,14 +44,15 @@ The workflows pass these values through backend config:
 Run the `Infra Provision` workflow to:
 - initialize Terraform with the remote backend
 - apply `environments/production.tfvars`
-- create ECR and App Runner resources
+- create base infrastructure, especially the ECR repository
 
 ### Deploy App
 
 Run the `App Deploy` workflow to:
-- read ECR and App Runner identifiers from Terraform outputs
+- read the ECR repository identifier from Terraform outputs
 - build and push the Docker image to ECR
-- update App Runner to the new immutable image tag
+- run Terraform with `create_apprunner_service=true` and the pushed immutable image tag
+- create or update the App Runner service from that image
 
 ### Destroy
 

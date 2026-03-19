@@ -25,4 +25,5 @@ terraform -chdir="${ROOT_DIR}" init \
 terraform -chdir="${ROOT_DIR}" apply \
   -input=false \
   -auto-approve \
-  -var-file="${TF_VARS_FILE}"
+  -var-file="${TF_VARS_FILE}" \
+  "$@"

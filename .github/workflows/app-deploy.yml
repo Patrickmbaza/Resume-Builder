@@ -94,14 +94,12 @@ jobs:
             -backend-config="dynamodb_table=${TF_LOCK_TABLE}"
 
           ECR_REPOSITORY_URL="$(terraform -chdir=infra/terraform output -raw ecr_repository_url)"
-          APP_RUNNER_SERVICE_ARN="$(terraform -chdir=infra/terraform output -raw apprunner_service_arn)"
-          if [ -z "${APP_RUNNER_SERVICE_ARN}" ] || [ "${APP_RUNNER_SERVICE_ARN}" = "null" ]; then
-            echo "App Runner service ARN not found in Terraform state. Run Infra Provision first."
+          if [ -z "${ECR_REPOSITORY_URL}" ] || [ "${ECR_REPOSITORY_URL}" = "null" ]; then
+            echo "ECR repository URL not found in Terraform state. Run Infra Provision first."
             exit 1
           fi
 
           echo "ecr_repository_url=${ECR_REPOSITORY_URL}" >> "$GITHUB_OUTPUT"
-          echo "app_runner_service_arn=${APP_RUNNER_SERVICE_ARN}" >> "$GITHUB_OUTPUT"
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -132,39 +130,14 @@ jobs:
             vite_openai_api_key=${{ secrets.VITE_OPENAI_API_KEY }}
             vite_openrouter_api_key=${{ secrets.VITE_OPENROUTER_API_KEY }}
 
-      - name: Deploy image to App Runner
+      - name: Apply Terraform with new image tag
         run: |
           set -euo pipefail
-
-          CURRENT_SOURCE_CONFIG="$(aws apprunner describe-service \
-            --service-arn "${APP_RUNNER_SERVICE_ARN}" \
-            --query 'Service.SourceConfiguration' \
-            --output json)"
-
-          UPDATED_SOURCE_CONFIG="$(echo "$CURRENT_SOURCE_CONFIG" | jq --arg IMAGE "${IMAGE_URI}" '.ImageRepository.ImageIdentifier = $IMAGE')"
-          printf '%s\n' "$UPDATED_SOURCE_CONFIG" > source-config.json
-
-          aws apprunner update-service \
-            --service-arn "${APP_RUNNER_SERVICE_ARN}" \
-            --source-configuration file://source-config.json >/tmp/apprunner-update.json
-
-          for i in $(seq 1 60); do
-            STATUS="$(aws apprunner describe-service --service-arn "${APP_RUNNER_SERVICE_ARN}" --query 'Service.Status' --output text)"
-            echo "Attempt $i: status=$STATUS"
-            if [ "$STATUS" = "RUNNING" ]; then
-              SERVICE_URL="$(aws apprunner describe-service --service-arn "${APP_RUNNER_SERVICE_ARN}" --query 'Service.ServiceUrl' --output text)"
-              echo "Deployment succeeded: https://${SERVICE_URL}"
-              exit 0
-            fi
-            if [ "$STATUS" = "CREATE_FAILED" ] || [ "$STATUS" = "DELETE_FAILED" ] || [ "$STATUS" = "OPERATION_FAILED" ]; then
-              echo "Deployment failed with status: $STATUS"
-              exit 1
-            fi
-            sleep 10
-          done
-
-          echo "Timed out waiting for App Runner deployment."
-          exit 1
+          bash infra/terraform/scripts/terraform_apply.sh \
+            -var="create_apprunner_service=true" \
+            -var="image_tag=${IMAGE_TAG}"
         env:
-          APP_RUNNER_SERVICE_ARN: ${{ steps.tf.outputs.app_runner_service_arn }}
-          IMAGE_URI: ${{ steps.meta.outputs.image_uri }}
+          IMAGE_TAG: ${{ steps.meta.outputs.image_tag }}
+
+      - name: Show Terraform outputs
+        run: terraform -chdir=infra/terraform output

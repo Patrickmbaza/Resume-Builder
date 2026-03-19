@@ -251,12 +251,13 @@ Behavior:
 - On manual run of `Infra Provision`:
   - Initialize Terraform against remote S3 backend
   - Apply `infra/terraform/environments/production.tfvars`
-  - Provision ECR, IAM access role for App Runner, autoscaling, and App Runner service
+  - Provision base infrastructure, primarily ECR and shared Terraform-managed resources
 - On push to `main` or manual run of `App Deploy`:
   - Run full app quality gates
-  - Read ECR/App Runner identifiers from Terraform remote state outputs
+  - Read the ECR repository identifier from Terraform remote state
   - Build and push image to ECR tagged with immutable SHA (`sha-<12-char-commit>`)
-  - Update App Runner service to the new image URI
+  - Run Terraform with `create_apprunner_service=true` and `image_tag=sha-...`
+  - Create or update App Runner from that exact immutable image tag
 - On manual run of `Infra Destroy`:
   - Initialize Terraform against the same remote backend
   - Destroy the full stack with `ecr_force_delete=true`
