@@ -35,6 +35,8 @@ coverage
 **/.terraformrc
 **/terraform.rc
 **/*.tfplan
+trust-policy.json
+gha-deploy-policy.json
 
 # Editor directories and files
 .vscode/*

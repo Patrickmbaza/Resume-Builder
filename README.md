@@ -287,21 +287,47 @@ Notes:
 
 ### First-Time Setup
 
-1. Create the GitHub OIDC role in AWS.
-2. Create the Terraform backend resources:
-   - S3 bucket for state
-   - DynamoDB table for locking
-3. Add repository variables:
+1. Create the GitHub OIDC role and Terraform backend resources in AWS.
+   Use the bootstrap script:
+
+```bash
+export GITHUB_ORG_OR_USER="<your-github-user-or-org>"
+export GITHUB_REPO="<your-repo-name>"
+bash infra/bootstrap/bootstrap_aws.sh
+```
+
+For strict trust to `main`, the script defaults to:
+- `GITHUB_REF_MODE=exact`
+- `GITHUB_REF=refs/heads/main`
+
+If you want the GitHub Actions role to be assumable from any branch in the repo, run:
+
+```bash
+export GITHUB_ORG_OR_USER="<your-github-user-or-org>"
+export GITHUB_REPO="<your-repo-name>"
+export GITHUB_REF_MODE=wildcard
+bash infra/bootstrap/bootstrap_aws.sh
+```
+
+This script creates:
+- the S3 state bucket with versioning enabled
+- the DynamoDB lock table
+- the GitHub Actions OIDC provider
+- the IAM role GitHub Actions assumes
+
+It also prints the GitHub Actions variable values you need to set.
+
+2. Add repository variables:
    - `AWS_REGION`
    - `AWS_ROLE_TO_ASSUME`
    - `TF_STATE_BUCKET`
    - `TF_LOCK_TABLE`
    - `TF_STATE_KEY`
-4. Add repository secrets if AI features need them:
+3. Add repository secrets if AI features need them:
    - `VITE_OPENAI_API_KEY`
    - `VITE_OPENROUTER_API_KEY`
-5. Run `Infra Provision` from GitHub Actions.
-6. Run `App Deploy` from GitHub Actions, or push to `main`.
+4. Run `Infra Provision` from GitHub Actions.
+5. Run `App Deploy` from GitHub Actions, or push to `main`.
 
 ### Source of Truth
 
@@ -347,6 +373,8 @@ This warning is non-blocking and does not affect runtime behavior.
   - [terraform_apply.sh](/mnt/c/Users/patri/Desktop/DEVOPS-PROJECTS/Resume-builder/infra/terraform/scripts/terraform_apply.sh)
 - Terraform destroy helper used by GitHub Actions:
   - [terraform_destroy.sh](/mnt/c/Users/patri/Desktop/DEVOPS-PROJECTS/Resume-builder/infra/terraform/scripts/terraform_destroy.sh)
+- AWS bootstrap helper for the one-time backend and OIDC setup:
+  - [bootstrap_aws.sh](/mnt/c/Users/patri/Desktop/DEVOPS-PROJECTS/Resume-builder/infra/bootstrap/bootstrap_aws.sh)
 - Local ECR image push helper:
   - [infra/terraform/scripts/push_ecr.sh](/mnt/c/Users/patri/Desktop/DEVOPS-PROJECTS/Resume-builder/infra/terraform/scripts/push_ecr.sh)
 
