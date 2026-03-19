@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { AxiosError } from 'axios';
 import type { ResumeData } from '../types/resume';
 
 const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
@@ -12,6 +13,12 @@ const api = axios.create({
     'Content-Type': 'application/json'
   }
 });
+
+type OpenRouterErrorResponse = {
+  error?: {
+    message?: string;
+  };
+};
 
 // Helper to make API calls using a reliable model like openchat, deepseek, or meta-llama via openrouter
 // Using a fast and capable model for these tasks.
@@ -29,9 +36,10 @@ const generateCompletion = async (prompt: string, systemPrompt?: string): Promis
     });
 
     return response.data.choices[0].message.content.trim();
-  } catch (error: any) {
-    const msg = error?.response?.data?.error?.message || error?.message || 'Unknown error';
-    console.error('AI Service Error:', msg, error?.response?.data);
+  } catch (error) {
+    const axiosError = error as AxiosError<OpenRouterErrorResponse>;
+    const msg = axiosError.response?.data?.error?.message || axiosError.message || 'Unknown error';
+    console.error('AI Service Error:', msg, axiosError.response?.data);
     throw new Error(`AI request failed: ${msg}`);
   }
 };
@@ -89,7 +97,7 @@ export const aiService = {
       const cleanJsonStr = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
       const result = JSON.parse(cleanJsonStr);
       return result;
-    } catch (e) {
+    } catch {
       console.error("Failed to parse AI JSON:", responseText);
       return {
         score: 85,

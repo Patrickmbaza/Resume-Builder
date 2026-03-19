@@ -5,7 +5,6 @@ import Preview from '../components/preview/Preview';
 import SettingsPage from './SettingsPage';
 import TemplatesPage from './TemplatesPage';
 import { useResume } from '../hooks/useResume';
-// @ts-ignore
 import html2pdf from 'html2pdf.js';
 
 type Panel = 'editor' | 'settings' | 'templates';
