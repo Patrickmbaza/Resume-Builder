@@ -8,6 +8,7 @@
 # Local variables and overrides
 *.tfvars
 !*.tfvars.example
+!environments/*.tfvars
 override.tf
 override.tf.json
 *_override.tf
