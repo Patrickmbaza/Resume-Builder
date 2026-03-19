@@ -22,6 +22,15 @@ terraform -chdir="${ROOT_DIR}" init \
   -backend-config="region=${AWS_REGION}" \
   -backend-config="dynamodb_table=${TF_LOCK_TABLE}"
 
+# Persist force_delete on the repository before destroy so ECR can remove
+# non-empty repos during teardown.
+terraform -chdir="${ROOT_DIR}" apply \
+  -input=false \
+  -auto-approve \
+  -target=aws_ecr_repository.app \
+  -var-file="${TF_VARS_FILE}" \
+  -var="ecr_force_delete=true"
+
 terraform -chdir="${ROOT_DIR}" destroy \
   -input=false \
   -auto-approve \

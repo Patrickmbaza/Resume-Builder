@@ -2,26 +2,22 @@ import axios from 'axios';
 import type { AxiosError } from 'axios';
 import type { ResumeData } from '../types/resume';
 
-const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
+const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 
 const api = axios.create({
-  baseURL: 'https://openrouter.ai/api/v1',
+  baseURL: 'https://api.openai.com/v1',
   headers: {
-    'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-    'HTTP-Referer': window.location.origin,
-    'X-Title': 'AI Resume Builder',
+    'Authorization': `Bearer ${OPENAI_API_KEY}`,
     'Content-Type': 'application/json'
   }
 });
 
-type OpenRouterErrorResponse = {
+type OpenAIErrorResponse = {
   error?: {
     message?: string;
   };
 };
 
-// Helper to make API calls using a reliable model like openchat, deepseek, or meta-llama via openrouter
-// Using a fast and capable model for these tasks.
 const generateCompletion = async (prompt: string, systemPrompt?: string): Promise<string> => {
   try {
     const messages = [];
@@ -29,7 +25,7 @@ const generateCompletion = async (prompt: string, systemPrompt?: string): Promis
     messages.push({ role: 'user', content: prompt });
 
     const response = await api.post('/chat/completions', {
-      model: 'google/gemini-2.5-flash',
+      model: 'gpt-4o-mini',
       messages,
       temperature: 0.7,
       max_tokens: 1024,
@@ -37,7 +33,7 @@ const generateCompletion = async (prompt: string, systemPrompt?: string): Promis
 
     return response.data.choices[0].message.content.trim();
   } catch (error) {
-    const axiosError = error as AxiosError<OpenRouterErrorResponse>;
+    const axiosError = error as AxiosError<OpenAIErrorResponse>;
     const msg = axiosError.response?.data?.error?.message || axiosError.message || 'Unknown error';
     console.error('AI Service Error:', msg, axiosError.response?.data);
     throw new Error(`AI request failed: ${msg}`);
